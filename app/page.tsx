@@ -8,7 +8,8 @@ const split = (s: string) => s.split(',').map(x => x.trim()).filter(Boolean)
 export default function Home() {
   const [userId, setUserId] = useState<string | null>(null)
   const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
+  const [password, setPassword] = useState('')
+  const [authError, setAuthError] = useState('')
   const [me, setMe] = useState<Profile | null>(null)
   const [form, setForm] = useState({ name: '', bio: '', interests: '', goals: '' })
   const [matches, setMatches] = useState<(Profile & { score: number })[]>([])
@@ -20,7 +21,11 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    if (!userId) return
+    if (!userId) {
+      setMe(null)
+      setMatches([])
+      return
+    }
     supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
       .then(({ data }) => setMe(data))
   }, [userId])
@@ -38,9 +43,20 @@ export default function Home() {
       })
   }, [me])
 
-  const login = async () => {
-    await supabase.auth.signInWithOtp({ email })
-    setSent(true)
+  const signUp = async () => {
+    setAuthError('')
+    const { error } = await supabase.auth.signUp({ email, password })
+    if (error) setAuthError(error.message)
+  }
+
+  const signIn = async () => {
+    setAuthError('')
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) setAuthError(error.message)
+  }
+
+  const signOut = async () => {
+    await supabase.auth.signOut()
   }
 
   const saveProfile = async () => {
@@ -49,12 +65,21 @@ export default function Home() {
       match_type: 'study_buddy',
       interests: split(form.interests), goals: split(form.goals),
     }
-    await supabase.from('profiles').upsert(row)
+    const { error } = await supabase.from('profiles').upsert(row)
+    if (error) {
+      alert('Could not save profile: ' + error.message)
+      return
+    }
     setMe(row as Profile)
   }
 
   const connect = async (toUser: string) => {
-    await supabase.from('match_requests').insert({ from_user: userId, to_user: toUser })
+    const { error } = await supabase.from('match_requests')
+      .insert({ from_user: userId, to_user: toUser })
+    if (error) {
+      alert(error.code === '23505' ? 'You already sent a request.' : 'Error: ' + error.message)
+      return
+    }
     alert('Request sent!')
   }
 
@@ -63,10 +88,18 @@ export default function Home() {
       <h1 className="text-2xl font-bold">MatchBuddy</h1>
       <input className="border p-2 w-full" placeholder="Your email"
         value={email} onChange={e => setEmail(e.target.value)} />
-      <button className="bg-black text-white px-4 py-2 rounded" onClick={login}>
-        Send magic link
-      </button>
-      {sent && <p>Check your email to sign in.</p>}
+      <input className="border p-2 w-full" type="password"
+        placeholder="Password (6+ characters)"
+        value={password} onChange={e => setPassword(e.target.value)} />
+      <div className="flex gap-2">
+        <button className="bg-black text-white px-4 py-2 rounded" onClick={signIn}>
+          Log in
+        </button>
+        <button className="border px-4 py-2 rounded" onClick={signUp}>
+          Sign up
+        </button>
+      </div>
+      {authError && <p className="text-red-500">{authError}</p>}
     </main>
   )
 
@@ -78,13 +111,18 @@ export default function Home() {
           placeholder={k === 'interests' || k === 'goals' ? `${k} (comma separated)` : k}
           value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} />
       ))}
-      <button className="bg-black text-white px-4 py-2 rounded" onClick={saveProfile}>Save</button>
+      <button className="bg-black text-white px-4 py-2 rounded" onClick={saveProfile}>
+        Save
+      </button>
     </main>
   )
 
   return (
     <main className="max-w-xl mx-auto p-8 space-y-4">
-      <h1 className="text-2xl font-bold">Hi {me.name}, your top matches</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Hi {me.name}, your top matches</h1>
+        <button className="border px-3 py-1 rounded" onClick={signOut}>Log out</button>
+      </div>
       {matches.length === 0 && <p>No one else has joined yet. Invite a friend!</p>}
       {matches.map(m => (
         <div key={m.id} className="border rounded p-4 flex justify-between items-center">
