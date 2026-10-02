@@ -5,6 +5,7 @@ export type Profile = {
   match_type: string
   interests: string[]
   goals: string[]
+  avatar_url?: string | null
 }
 
 const jaccard = (a: string[], b: string[]) => {
